@@ -121,9 +121,10 @@ python eval_real_robot.py \
 
 If you use this work, please cite:
 ```bibtex
-@article{vaptamp2026,
-  title={VAP-TAMP: Vision-language Active Perception for Task and Motion Planning},
-  author={Your Name and Collaborators},
+@inproceedings{oloo2026robot,
+  title={Robot Planning and Situation Handling with Active Perception},
+  author={Oloo, Austine and Altaweel, Zainab and Hayamizu, Yohei and Liu, Peiqi and Ding, Yan and Amiri, Saeid and Yang, Hao and Kaminski, Andy and Esselink, Chad and Paxton, Chris and Zhang, Xiaohan and Zhang, Shiqi},
+  booktitle={IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
   year={2026}
 }
 ```
