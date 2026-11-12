@@ -126,9 +126,7 @@ RUN --mount=type=cache,id=uv,target=/root/.cache/uv \
     uv pip install -r /tmp/requirements.lock.txt
 COPY --from=detectron2 /wheels /tmp/wheels
 RUN --mount=type=cache,id=uv,target=/root/.cache/uv \
-    uv pip install --no-deps /tmp/wheels/detectron2-*.whl \
-    # sanity check: torch kept its CUDA build (nothing pulled a PyPI torch over it)
-    && python -c "import torch; from detectron2 import _C; assert '+${TORCH_CUDA}' in torch.__version__, torch.__version__"
+    uv pip install --no-deps /tmp/wheels/detectron2-*.whl
 
 ###############################################################################
 # Runtime
@@ -159,6 +157,10 @@ RUN ldconfig
 
 # Python env
 COPY --from=pyenv /opt/venv /opt/venv
+# Sanity check (here, not in pyenv: detectron2 imports cv2, which needs the libGL above).
+# torch must still be the CUDA build, i.e. nothing pulled a PyPI torch over it.
+ARG TORCH_CUDA
+RUN /opt/venv/bin/python -c "import torch; from detectron2 import _C; assert '+${TORCH_CUDA}' in torch.__version__, torch.__version__"
 
 ENV VIRTUAL_ENV=/opt/venv \
     PATH=/opt/venv/bin:/opt/val/bin:$PATH \
