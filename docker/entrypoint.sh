@@ -48,7 +48,12 @@ if [ ! -f "$DETIC_MODELS/$DETIC_NAME" ] && [ "${SKIP_DETIC_DOWNLOAD:-0}" != "1" 
     if [ ! -f "$DETIC_CACHE_DIR/$DETIC_NAME" ]; then
         echo "[vap-entrypoint] downloading Detic checkpoint into $DETIC_CACHE_DIR (one-time)..."
         tmp="$DETIC_CACHE_DIR/$DETIC_NAME.part"
-        wget -q --show-progress -O "$tmp" "$DETIC_URL" || { rm -f "$tmp"; exit 1; }
+        if ! wget --progress=bar:force -O "$tmp" "$DETIC_URL"; then
+            rm -f "$tmp"
+            echo "[vap-entrypoint] ERROR: Detic checkpoint download failed (see wget output above)." \
+                 "Set SKIP_DETIC_DOWNLOAD=1 to start anyway." >&2
+            exit 1
+        fi
         # the real checkpoint is several hundred MB; anything tiny is an error page
         if [ "$(stat -c %s "$tmp")" -lt $((100 * 1024 * 1024)) ]; then
             echo "[vap-entrypoint] Detic download looks wrong ($(stat -c %s "$tmp") bytes); not saving it" >&2
