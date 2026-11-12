@@ -48,10 +48,15 @@ if [ ! -f "$DETIC_MODELS/$DETIC_NAME" ] && [ "${SKIP_DETIC_DOWNLOAD:-0}" != "1" 
     if [ ! -f "$DETIC_CACHE_DIR/$DETIC_NAME" ]; then
         echo "[vap-entrypoint] downloading Detic checkpoint into $DETIC_CACHE_DIR (one-time)..."
         python - "$DETIC_URL" "$DETIC_CACHE_DIR/$DETIC_NAME" <<'PY'
-import sys, urllib.request, shutil, os
+import sys, urllib.request, shutil, os, ssl
 url, dst = sys.argv[1], sys.argv[2]
 tmp = dst + ".part"
-with urllib.request.urlopen(url) as r, open(tmp, "wb") as f:
+try:  # certifi's CA bundle works even if the system CA store is missing
+    import certifi
+    ctx = ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    ctx = ssl.create_default_context()
+with urllib.request.urlopen(url, context=ctx) as r, open(tmp, "wb") as f:
     shutil.copyfileobj(r, f, 1 << 20)
 os.replace(tmp, dst)
 PY

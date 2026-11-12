@@ -162,6 +162,11 @@ COPY --from=pyenv /opt/venv /opt/venv
 ARG TORCH_CUDA
 RUN /opt/venv/bin/python -c "import torch; from detectron2 import _C; assert '+${TORCH_CUDA}' in torch.__version__, torch.__version__"
 
+# System CA store for urllib downloads (Detic checkpoint, CLIP weights). Kept as its own
+# small layer after the 8 GB venv copy so changing it doesn't invalidate that copy.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV VIRTUAL_ENV=/opt/venv \
     PATH=/opt/venv/bin:/opt/val/bin:$PATH \
     VAP_TAMP_ROOT=/workspace/VAP-TAMP \
