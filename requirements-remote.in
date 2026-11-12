@@ -1,0 +1,75 @@
+# Python deps for the VAP-TAMP *remote* (workstation) side.
+# torch/torchvision are installed separately from the PyTorch CUDA index.
+# Derived from stretch_ai/src/setup.py + Detic requirements + vlm-tamp imports,
+# with robot-only / unused packages removed (see comments at the bottom).
+
+# --- pinned for compatibility with torch 2.3.x / stretch_ai 0.3.0 ---
+torch==2.3.1
+torchvision==0.18.1
+numpy<2
+setuptools==69.5.1          # pkg_resources is still imported; same pin as stretch_ai install.sh
+
+# --- vlm-tamp ---
+google-generativeai         # gemini_api.py
+pddl                        # pddl_sim.py (parse_domain / parse_problem)
+
+# --- stretch_ai core ---
+pyyaml
+pyzmq
+numba
+opencv-python
+scipy
+matplotlib
+pandas
+scikit-learn
+trimesh>=3.10.0
+yacs
+scikit-image>=0.21.0
+sophuspy
+pin                         # pinocchio (imported by stretch.motion)
+schema
+overrides
+wget
+click
+termcolor
+tqdm
+gitpython
+openai
+openai-clip
+hello-robot-stretch-urdf    # URDF files used by kinematics / visualizer (data only)
+urchin
+rerun-sdk>=0.18.0,<0.23
+sentencepiece
+hydra-core
+timm==1.0.11              # >1.0.0 per stretch_ai; era-matched to torch 2.3
+huggingface_hub<0.27
+transformers==4.46.3      # SigLIP + DINOv2 encoders; v5 drops torch 2.3 support
+accelerate==1.1.1
+einops
+segment-anything
+pyliblzfse
+webp>=0.3.0
+scikit-fmm
+open3d-cpu==0.18.0          # same `open3d` module; CPU build is ~300 MB smaller (no CUDA use in this code)
+
+# imported at module level by stretch.audio (pulled in via RobotAgent), so required
+PyAudio>=0.2.14
+openai-whisper
+
+# --- Detic / detectron2 runtime ---
+# detectron2 itself is built as a wheel in its own stage and installed with --no-deps,
+# so its runtime deps are listed here (minus black/tensorboard, which are optional).
+ftfy
+regex
+fvcore>=0.1.5,<0.1.6
+iopath>=0.1.7,<0.1.10
+omegaconf>=2.1,<2.4
+pycocotools>=2.0.2
+tabulate
+cloudpickle
+packaging
+
+# Deliberately omitted (robot-side or never imported on the eval_real_robot path):
+#   pyrealsense2, pynput, pyusb, mujoco, google-cloud-texttospeech, gtts, pyttsx3,
+#   simpleaudio, sounddevice, librosa, pydub, wave, fasttext, lvis, nltk, mss,
+#   torch-geometric/torch-cluster (code has pure-torch fallbacks), dev tools.
