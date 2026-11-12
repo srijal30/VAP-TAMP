@@ -47,19 +47,14 @@ if [ ! -f "$DETIC_MODELS/$DETIC_NAME" ] && [ "${SKIP_DETIC_DOWNLOAD:-0}" != "1" 
     link_if_missing "$DETIC_CACHE_DIR" "$DETIC_MODELS"
     if [ ! -f "$DETIC_CACHE_DIR/$DETIC_NAME" ]; then
         echo "[vap-entrypoint] downloading Detic checkpoint into $DETIC_CACHE_DIR (one-time)..."
-        python - "$DETIC_URL" "$DETIC_CACHE_DIR/$DETIC_NAME" <<'PY'
-import sys, urllib.request, shutil, os, ssl
-url, dst = sys.argv[1], sys.argv[2]
-tmp = dst + ".part"
-try:  # certifi's CA bundle works even if the system CA store is missing
-    import certifi
-    ctx = ssl.create_default_context(cafile=certifi.where())
-except ImportError:
-    ctx = ssl.create_default_context()
-with urllib.request.urlopen(url, context=ctx) as r, open(tmp, "wb") as f:
-    shutil.copyfileobj(r, f, 1 << 20)
-os.replace(tmp, dst)
-PY
+        tmp="$DETIC_CACHE_DIR/$DETIC_NAME.part"
+        wget -q --show-progress -O "$tmp" "$DETIC_URL" || { rm -f "$tmp"; exit 1; }
+        # the real checkpoint is several hundred MB; anything tiny is an error page
+        if [ "$(stat -c %s "$tmp")" -lt $((100 * 1024 * 1024)) ]; then
+            echo "[vap-entrypoint] Detic download looks wrong ($(stat -c %s "$tmp") bytes); not saving it" >&2
+            rm -f "$tmp"; exit 1
+        fi
+        mv "$tmp" "$DETIC_CACHE_DIR/$DETIC_NAME"
     fi
 fi
 
