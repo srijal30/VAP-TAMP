@@ -1,0 +1,44 @@
+# Run the VAP-TAMP remote stack.
+#   docker compose -f docker/compose.yaml build
+#   docker compose -f docker/compose.yaml run --rm remote \
+#       python eval_real_robot.py --robot-ip <ROBOT_IP> --map-file /maps/<map>.pkl \
+#         --domain domains/bottle_collection/domain.pddl \
+#         --problem domains/bottle_collection/problem.pddl \
+#         --api-key "$GEMINI_API_KEY" --location-map location_mapping.yaml \
+#         --config rosbridge_robot_config.yaml --calibration simple_offset_calibration.yaml \
+#         --output bottle_collection_results.json
+services:
+  remote:
+    image: vap-tamp:remote
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    # host networking: ZMQ to the robot (ports 4401-4404) + ROS 2 DDS discovery
+    network_mode: host
+    # Fast DDS shared-memory transport needs a shared IPC namespace with the bridge
+    ipc: host
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - DISPLAY=${DISPLAY:-}          # optional: open3d / cv2 windows
+    env_file:
+      - path: ../.env
+        required: false
+    volumes:
+      - vap-cache:/cache                         # HF / CLIP / Detic weights, downloaded once
+      - ${MAPS_DIR:-../maps}:/maps:ro             # your saved .pkl voxel maps
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      # Dev mode: uncomment to run your working copy instead of the baked-in source
+      # - ..:/workspace/VAP-TAMP
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    stdin_open: true
+    tty: true
+
+volumes:
+  vap-cache:

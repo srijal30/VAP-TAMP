@@ -1,0 +1,7 @@
+# ignore everything by default
+*
+# we need to see thse files for building
+!docker/requirements.txt
+!docker/entrypoint.sh
+!vlm-tamp/VAL/
+vlm-tamp/VAL/build # ignore any build files in VAL
