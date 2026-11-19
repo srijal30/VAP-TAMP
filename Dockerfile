@@ -8,7 +8,6 @@
 # Stages
 #   downward   prebuilt Fast Downward 23.06 (aibasel/downward) -> only the release binaries
 #   val        VAL "Validate" built from the vendored vlm-tamp/VAL source (no upstream image)
-#   detic      upstream Detic source at the commit stretch_ai 0.3.0 pins (+CenterNet2 submodule)
 #   detectron2 detectron2 wheel built with CUDA from the commit stretch_ai 0.3.0 pins
 #   pyenv      Python 3.10 venv (uv) with torch cu118 + all remote Python deps
 #   runtime    ros:humble-ros-core + venv + binaries + repo source   <-- final image
@@ -25,11 +24,9 @@ ARG TORCH_CUDA=cu118
 # GPU archs for detectron2's CUDA ops (Pascal .. Hopper; +PTX for forward-compat)
 ARG TORCH_CUDA_ARCH_LIST="6.0;7.0;7.5;8.0;8.6;8.9;9.0+PTX"
 
-# Submodule commits from upstream hello-robot/stretch_ai at version 0.3.0 (what this fork is).
-# The fork's vendored copies are incomplete: stretch_ai/.gitignore has `data/`, which dropped
-# detectron2/data, Detic/detic/data and CenterNet2/centernet/data. Otherwise identical.
+# NOTE: since `/data` in .gitignore we have to resolve
+# detectron2/data, Detic/detic/data and CenterNet2/centernet/data
 ARG DETECTRON2_REF=c69939aa85460e8135f40bce908a6cddaa73065f
-ARG DETIC_REF=436cda2a2347df60a7c66daca0e8c59f93dc5e79
 
 FROM ${UV_IMAGE} AS uv
 
@@ -45,18 +42,6 @@ RUN set -eux; \
     cp -a /workspace/downward/builds/release/bin /out/downward/builds/release/; \
     ldd /workspace/downward/builds/release/bin/downward \
       | awk '/soplex/ {print $3}' | xargs -r cp -L -t /out/lib/
-
-###############################################################################
-# Detic source (pure python + metadata; checkpoint is fetched at first run)
-###############################################################################
-FROM alpine/git:v2.54.0 AS detic
-ARG DETIC_REF
-RUN set -eux; \
-    git clone --filter=blob:none https://github.com/facebookresearch/Detic.git /detic; \
-    cd /detic; git checkout -q "$DETIC_REF"; \
-    git submodule update --init third_party/CenterNet2 third_party/Deformable-DETR; \
-    rm -rf .git third_party/*/.git docs third_party/*/docs third_party/Deformable-DETR/figs; \
-    ln -s /cache/detic models
 
 ###############################################################################
 # VAL: small CMake build from the vendored source
@@ -81,13 +66,13 @@ ARG TORCHVISION_VERSION
 ARG TORCH_CUDA
 ARG TORCH_CUDA_ARCH_LIST
 ENV DEBIAN_FRONTEND=noninteractive
+ENV UV_NO_CACHE=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 python3-dev git build-essential \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=uv /uv /usr/local/bin/uv
 ENV UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never VIRTUAL_ENV=/opt/build PATH=/opt/build/bin:$PATH
-RUN --mount=type=cache,id=uv,target=/root/.cache/uv \
-    uv venv --seed /opt/build --python /usr/bin/python3 \
+RUN uv venv --seed /opt/build --python /usr/bin/python3 \
     && uv pip install --index-url https://download.pytorch.org/whl/${TORCH_CUDA} \
         torch==${TORCH_VERSION} torchvision==${TORCHVISION_VERSION} \
     && uv pip install setuptools==69.5.1 wheel ninja
@@ -100,87 +85,63 @@ RUN cd /src/detectron2 \
     && MAX_JOBS="$(nproc)" python -m pip wheel --no-deps --no-build-isolation -w /wheels .
 
 ###############################################################################
-# Python environment (built on the same base as runtime -> same /usr/bin/python3)
+# Runtime
 ###############################################################################
-FROM ros:${ROS_DISTRO}-ros-core-jammy AS pyenv
+FROM ros:${ROS_DISTRO}-ros-core-jammy AS runtime
+
+ARG ROS_DISTRO
 ARG TORCH_VERSION
 ARG TORCHVISION_VERSION
 ARG TORCH_CUDA
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Compilers/headers only for sdists (PyAudio needs portaudio.h); not carried to runtime.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential python3-dev portaudio19-dev git \
-    && rm -rf /var/lib/apt/lists/*
-COPY --from=uv /uv /usr/local/bin/uv
-ENV UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1 UV_PYTHON_DOWNLOADS=never \
-    VIRTUAL_ENV=/opt/venv PATH=/opt/venv/bin:$PATH
-RUN --mount=type=cache,id=uv,target=/root/.cache/uv \
-    uv venv /opt/venv --python /usr/bin/python3 \
-    && uv pip install --index-url https://download.pytorch.org/whl/${TORCH_CUDA} \
-        torch==${TORCH_VERSION} torchvision==${TORCHVISION_VERSION}
-COPY docker/requirements.txt /tmp/requirements.txt
-RUN --mount=type=cache,id=uv,target=/root/.cache/uv \
-    uv pip install -r /tmp/requirements.txt
-COPY --from=detectron2 /wheels /tmp/wheels
-RUN --mount=type=cache,id=uv,target=/root/.cache/uv \
-    uv pip install --no-deps /tmp/wheels/detectron2-*.whl
-
-###############################################################################
-# Runtime
-###############################################################################
-FROM ros:${ROS_DISTRO}-ros-core-jammy AS runtime
-ARG ROS_DISTRO
-ENV DEBIAN_FRONTEND=noninteractive
-# - control-msgs: stretch/core/ur5e_robot.py (FollowJointTrajectory); the other msgs ship
-#   with ros-core but are listed explicitly so the dependency is visible.
-# - GL/X/glib/gomp libs: opencv-python, open3d. libportaudio2: PyAudio (imported at
-#   module level by stretch.audio even though audio is never used here).
-# - python3-tk: stretch.app.vlm_planning forces matplotlib's TkAgg backend.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        ros-${ROS_DISTRO}-control-msgs \
-        ros-${ROS_DISTRO}-sensor-msgs \
-        ros-${ROS_DISTRO}-trajectory-msgs \
-        ros-${ROS_DISTRO}-std-msgs \
+        ros-${ROS_DISTRO}-control-msgs ros-${ROS_DISTRO}-sensor-msgs \
+        ros-${ROS_DISTRO}-trajectory-msgs ros-${ROS_DISTRO}-std-msgs \
         libgl1 libegl1 libglib2.0-0 libgomp1 libsm6 libxext6 libxrender1 \
-        libportaudio2 \
-        python3-tk \
+        libportaudio2  python3-tk ca-certificates wget \
     && rm -rf /var/lib/apt/lists/*
 
+# FIRST setup the python environment
+ENV UV_NO_CACHE=1 UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1 UV_PYTHON_DOWNLOADS=never \
+    VIRTUAL_ENV=/opt/venv PATH=/opt/venv/bin:$PATH
 
-### TODO: fix this part
-### ADD DEPENDENCIES FROM OTHER STAGES
-# NOTE: Claude reccomends doing a sanity check here
-# Copy over python environment
-COPY --from=pyenv /opt/venv /opt/venv
-ENV VIRTUAL_ENV=/opt/venv \
-    PATH=/opt/venv/bin:/opt/val/bin:$PATH \
-    VAP_TAMP_ROOT=/workspace/VAP-TAMP \
-    PYTHONPATH=/workspace/VAP-TAMP/stretch_ai/src:/workspace/VAP-TAMP \
-    PYTHONUNBUFFERED=1 \
-    # one volume for every downloaded model (HF SigLIP/DINOv2, CLIP, torch hub, Detic)
-    XDG_CACHE_HOME=/cache \
-    HF_HOME=/cache/huggingface \
-    TORCH_HOME=/cache/torch \
-    DETIC_CACHE_DIR=/cache/detic \
-    NVIDIA_VISIBLE_DEVICES=all \
-    NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
+# NOTE: mount=type=bind creates a lasting copy in the final image
+RUN --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
+    --mount=type=bind,source=docker/requirements.txt,target=/tmp/requirements.txt \
+    --mount=type=bind,from=detectron2,source=/wheels,target=/tmp/wheels \
+    set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends build-essential python3-dev portaudio19-dev; \
+    uv venv /opt/venv --python /usr/bin/python3; \
+    uv pip install --index-url https://download.pytorch.org/whl/${TORCH_CUDA} \
+        torch==${TORCH_VERSION} torchvision==${TORCHVISION_VERSION}; \
+    uv pip install -r /tmp/requirements.txt; \
+    uv pip check; \
+    uv pip install --no-deps /tmp/wheels/detectron2-*.whl; \
+    rm -rf /var/lib/apt/lists/*
+# Run a quick check to see if CUDA-enabled torch is installed
+RUN python -c "import torch; from detectron2 import _C; assert '+${TORCH_CUDA}' in torch.__version__, torch.__version"
 
 # Planner / validator binaries
 COPY --from=downward /out/downward /opt/downward
 COPY --from=downward /out/lib/ /usr/local/lib/
 COPY --from=val /src/VAL/build/linux64/Release/bin /opt/val/bin
 RUN ldconfig
- 
-# Third party libraries (adding step, linking comes later)
-COPY --from=detic /detic /opt/detic
 
-# Repo itself (consider mounting lowk)
-COPY . /workspace/VAP-TAMP
+# Setup final env vars + entrypoint.sh
+ENV PYTHONPATH=/workspace/VAP-TAMP/stretch_ai/src:/workspace/VAP-TAMP \
+    PYTHONUNBUFFERED=1 \
+    FAST_DOWNWARD=/opt/downward/fast-downward.py \
+    VAL_VALIDATE=/opt/val/bin/Validate \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
+COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/vap-entrypoint
+RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /root/.bashrc
 
-# Link all the third_party dependencies
-RUN ln -sfn /opt/detic /workspace/VAP-TAMP/stretch_ai/src/stretch/perception/detection/detic/Detic \
-    && mkdir -p /cache/detic \
-    && echo 'source /opt/ros/${ROS_DISTRO}/setup.bash' >> /root/.bashrc
+# TODO: create a symlink from project repo mount to 1GB files such as CLIP & SigLP
 
+# Make sure to mount the workspace!
+WORKDIR /workspace/VAP-TAMP
+ENTRYPOINT ["/usr/local/bin/vap-entrypoint"]
 CMD ["bash"]

@@ -135,9 +135,16 @@ webcam_calibration_images/
 # Policy weights and configs
 policy/
 
-# Data collection folder
-data/
+
+# Data collection folders
 log/
+data/
+
+# Exceptions to data rule
+!src/stretch/perception/detection/detic/Detic/detic/data
+!src/stretch/perception/detection/detic/Detic/third_party/CenterNet2/centernet/data/
+# Forcefully ignore this (almost 1 GB file)
+src/stretch/perception/detection/detic/Detic/models/ 
 
 # install folder
 install/

@@ -5,6 +5,9 @@ from pddl import parse_domain, parse_problem
 FAST_DOWNWARD_ALIAS = "seq-opt-fdss-1"
 TIME_LIMIT = 10
 
+FAST_DOWNWARD = os.environ.get("FAST_DOWNWARD", "./downward/fast-downward.py")
+VAL_VALIDATE = os.environ.get("VAL_VALIDATE", "VAL/build/linux64/Release/bin/Validate")
+
 
 class pddlsim(object):
     def __init__(self, domain_file):
@@ -16,7 +19,7 @@ class pddlsim(object):
     def plan(self, problem_file):
         try:
             output = subprocess.check_output(
-                f"python ./downward/fast-downward.py --alias {FAST_DOWNWARD_ALIAS} "
+                f"python {FAST_DOWNWARD} --alias {FAST_DOWNWARD_ALIAS} "
                 + f"--search-time-limit {TIME_LIMIT} "
                 + "--plan-file pddl_output.txt "
                 # + f"--sas-file aaa.sas "
@@ -50,7 +53,7 @@ class pddlsim(object):
         int_states = []
         try:
             output = subprocess.check_output(
-                "VAL/build/linux64/Release/bin/Validate -v "
+                "{VAL_VALIDATE} -v "
                 + f"{self.domain_file} {problem_file} {plan_file}",
                 shell=True,
             )

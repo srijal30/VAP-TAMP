@@ -9,6 +9,7 @@ docker run -it \
   --ipc host \
   -v /home/salaj/robotics/vap-tamp/data:/data:ro \
   -v /home/salaj/robotics/vap-tamp/outputs:/outputs:rw \
+  -v /home/salaj/robotics/vap-tamp/VAP-TAMP:/workspace/VAP-TAMP \
   -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}" \
   -e GEMINI_API_KEY \
   -e DISPLAY \
